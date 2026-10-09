@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ username }} · AuditSentinel{% endblock %}
+{% block content %}
+
+<a class="back" href="{{ url_for('index') }}">← All alerts</a>
+
+<div class="alert-head">
+  <h1>{{ username }}</h1>
+  {% if user %}
+    <p class="desc big">{{ user.role|capitalize }} · {{ user.department }}</p>
+  {% else %}
+    <p class="desc big"><strong>Not a known account.</strong> This username is not in the users table.</p>
+  {% endif %}
+</div>
+
+<div class="panels">
+  <section class="panel">
+    <h2>Summary</h2>
+    <dl>
+      <dt>Events</dt><dd>{{ events|length }}</dd>
+      <dt>Flagged</dt><dd>{{ flagged_count }} event{{ 's' if flagged_count != 1 }} linked to alerts</dd>
+    </dl>
+  </section>
+  <section class="panel">
+    <h2>Source IPs</h2>
+    <ul class="related">
+      {% for ip in ips %}<li class="mono">{{ ip.source_ip }} <span class="muted">({{ ip.n }} events)</span></li>{% endfor %}
+    </ul>
+  </section>
+</div>
+
+<h2>Activity timeline</h2>
+<p class="hint">Highlighted rows are events that triggered an alert.</p>
+<div class="table-scroll">
+<table class="events">
+  <thead>
+    <tr><th>Time</th><th>Action</th><th>Table</th><th>Rows</th><th>IP</th></tr>
+  </thead>
+  <tbody>
+    {% for e in events %}
+    <tr class="{{ 'flagged' if e.flagged }}">
+      <td class="mono">{{ e.event_time.replace('T', ' ') }}</td>
+      <td><span class="action act-{{ e.event_type|lower }}">{{ e.event_type }}</span></td>
+      <td>{{ e.target_table or '—' }}
+        {% if e.sensitivity %}<span class="sens sens-{{ e.sensitivity }}">{{ e.sensitivity }}</span>{% endif %}</td>
+      <td>{{ "{:,}".format(e.rows_affected) }}</td>
+      <td class="mono">{{ e.source_ip }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% endblock %}

@@ -22,7 +22,7 @@ from db import get_connection
 # ---------------------------------------------------------------------------
 BRUTE_FORCE_FAILURES = 10            # failed logins...
 BRUTE_FORCE_WINDOW = timedelta(minutes=5)  # ...within this time
-BULK_READ_ROWS = 100             # a SELECT returning this many rows is unusual
+BULK_READ_ROWS = 10_000             # a SELECT returning this many rows is unusual
 MASS_DELETE_ROWS = 500               # a DELETE touching this many rows is unusual
 WORK_START_HOUR = 7                  # business hours are 07:00 to 19:00, Mon-Fri
 WORK_END_HOUR = 19

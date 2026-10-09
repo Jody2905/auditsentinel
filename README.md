@@ -4,7 +4,7 @@
 
 The simulated environment is modelled on a government treasury system, with accounts payable, payroll and bank account data, which is the kind of system where database misuse does the most damage.
 
-> 🚧 **Status:** Phases 1 to 3 complete (schema, ingestion, detection). A Flask dashboard and Docker/PostgreSQL support are in progress.
+> 🚧 **Status:** Phases 1 to 4 complete (schema, ingestion, detection, dashboard). Tests, Docker and PostgreSQL support are in progress.
 
 ---
 
@@ -33,6 +33,7 @@ generate_logs.py  →  logs/audit_log.jsonl  →  ingest.py  →  SQLite databas
 1. **Generate:** `generate_logs.py` simulates a week of database activity for seven staff across Treasury, Accounts Payable, Payroll, IT and Internal Audit, with five attack scenarios hidden in the normal traffic.
 2. **Ingest:** `ingest.py` validates each log line (JSON structure, timestamp, IP address, action type, row count) before it reaches the database. Invalid lines are written to `logs/rejected.log` with the reason, so nothing is dropped silently.
 3. **Detect:** `detect.py` runs each rule, saves new alerts, and records which events triggered each one.
+4. **Investigate:** `app.py` serves a web dashboard to filter alerts, inspect their evidence, review a user's full activity timeline, and move alerts through open → investigating → closed.
 
 ### Database schema
 
@@ -87,22 +88,25 @@ erDiagram
 - **Idempotent processing.** A `UNIQUE` index on the raw log line and evidence-based alert de-duplication mean ingestion and detection can be re-run safely without duplicates.
 - **Atomic ingestion.** Each batch is loaded in a single transaction: all of it is saved, or none of it.
 - **Traceable alerts.** The `alert_events` table links each alert to the original events, so an analyst can always trace a finding back to the source log lines.
+- **Hardened dashboard.** The web interface uses CSRF tokens on every state-changing form, whitelists all filter and status values, relies on Jinja's automatic HTML escaping to block XSS from log content, binds only to `127.0.0.1`, and keeps Flask debug mode off.
 - **Tunable thresholds.** Detection thresholds are constants at the top of `detect.py`. During testing, lowering the bulk-read threshold from 10,000 to 100 rows produced more than 140 false positives on normal activity, which shows why tuning matters.
 
 ---
 
 ## Getting started
 
-**Requirements:** Python 3.10 or newer. No extra packages are needed; SQLite is built into Python.
+**Requirements:** Python 3.10 or newer, and Flask for the dashboard. SQLite is built into Python.
 
 ```bash
 git clone https://github.com/Jody2905/auditsentinel.git
 cd auditsentinel
+python -m pip install -r requirements.txt
 
 python db.py              # create the database (answer y to start fresh)
 python generate_logs.py   # create logs/audit_log.jsonl
 python ingest.py          # validate and load the log
 python detect.py          # run the detection rules
+python app.py             # start the dashboard at http://127.0.0.1:5000
 ```
 
 On Windows, use `py` instead of `python` if `python` isn't recognized.
@@ -149,6 +153,10 @@ auditsentinel/
 ├── generate_logs.py       # simulated audit log with planted attacks
 ├── ingest.py              # validates and loads log files
 ├── detect.py              # detection rules and alert storage
+├── app.py                 # Flask dashboard
+├── templates/             # dashboard pages (alerts, alert detail, user timeline)
+├── static/style.css       # dashboard styling
+├── requirements.txt
 └── test_bad_lines.jsonl   # malformed lines for testing validation
 ```
 
@@ -159,7 +167,7 @@ auditsentinel/
 - [x] Phase 1: Schema design and simulated audit logs
 - [x] Phase 2: Validated, idempotent ingestion
 - [x] Phase 3: Detection engine with six rules and linked evidence
-- [ ] Phase 4: Flask dashboard to view, filter and triage alerts
+- [x] Phase 4: Flask dashboard to view, filter and triage alerts
 - [ ] Phase 5: Unit tests (pytest), Docker, and PostgreSQL support
 
 ---

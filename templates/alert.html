@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Alert #{{ alert.id }} · AuditSentinel{% endblock %}
+{% block content %}
+
+<a class="back" href="{{ url_for('index') }}">← All alerts</a>
+
+<div class="alert-head">
+  <h1>Alert #{{ alert.id }} <span class="badge sev-{{ alert.severity }}">{{ alert.severity }}</span></h1>
+  <p class="rule big">{{ alert.rule_name }}</p>
+  <p class="desc big">{{ alert.description }}</p>
+</div>
+
+<div class="panels">
+  <section class="panel">
+    <h2>Details</h2>
+    <dl>
+      <dt>Account</dt>
+      <dd><a href="{{ url_for('user_activity', username=alert.username) }}">{{ alert.username }}</a>
+        {% if user %}({{ user.role }}, {{ user.department }}){% else %}<strong>(not a known account)</strong>{% endif %}
+      </dd>
+      <dt>Source IP</dt><dd class="mono">{{ alert.source_ip }}</dd>
+      <dt>Raised</dt><dd>{{ alert.created_at }} UTC</dd>
+      <dt>Status</dt><dd><span class="status st-{{ alert.status }}">{{ alert.status }}</span></dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Triage</h2>
+    <form method="post" action="{{ url_for('update_status', alert_id=alert.id) }}" class="triage">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for s in statuses %}
+        <button type="submit" name="status" value="{{ s }}"
+                class="st-btn {% if s == alert.status %}current{% endif %}"
+                {% if s == alert.status %}disabled{% endif %}>
+          Mark {{ s }}
+        </button>
+      {% endfor %}
+    </form>
+
+    {% if related %}
+    <h3>Other alerts for {{ alert.username }}</h3>
+    <ul class="related">
+      {% for r in related %}
+        <li><a href="{{ url_for('alert_detail', alert_id=r.id) }}">#{{ r.id }} {{ r.rule_name }}</a>
+          <span class="badge sev-{{ r.severity }}">{{ r.severity }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+<h2>Evidence ({{ events|length }} event{{ 's' if events|length != 1 }})</h2>
+<div class="table-scroll">
+<table class="events">
+  <thead>
+    <tr><th>Time</th><th>Action</th><th>Table</th><th>Rows</th><th>IP</th></tr>
+  </thead>
+  <tbody>
+    {% for e in events %}
+    <tr>
+      <td class="mono">{{ e.event_time.replace('T', ' ') }}</td>
+      <td><span class="action act-{{ e.event_type|lower }}">{{ e.event_type }}</span></td>
+      <td>{{ e.target_table or '—' }}
+        {% if e.sensitivity %}<span class="sens sens-{{ e.sensitivity }}">{{ e.sensitivity }}</span>{% endif %}</td>
+      <td>{{ "{:,}".format(e.rows_affected) }}</td>
+      <td class="mono">{{ e.source_ip }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<details class="raw">
+  <summary>Raw log lines</summary>
+  <pre>{% for e in events %}{{ e.raw_line }}
+{% endfor %}</pre>
+</details>
+
+{% endblock %}
