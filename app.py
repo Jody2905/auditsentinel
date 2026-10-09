@@ -43,7 +43,10 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 def check_csrf():
     if request.method == "POST":
         sent = request.form.get("csrf_token", "")
-        if not secrets.compare_digest(sent, session.get("csrf_token", "")):
+        expected = session.get("csrf_token", "")
+        # Both must be non-empty: otherwise a visitor with no session could
+        # send an empty token and "" == "" would pass the check.
+        if not sent or not expected or not secrets.compare_digest(sent, expected):
             abort(400, "Invalid or missing CSRF token")
 
 
@@ -219,6 +222,8 @@ def bad_request(err):
 
 
 if __name__ == "__main__":
-    # 127.0.0.1 = only this computer can reach the dashboard.
+    # 127.0.0.1 = only this computer can reach the dashboard. Docker sets
+    # AUDITSENTINEL_HOST=0.0.0.0 because the browser is outside the container.
     # Debug mode stays off: it can expose a code console to anyone who reaches it.
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    host = os.environ.get("AUDITSENTINEL_HOST", "127.0.0.1")
+    app.run(host=host, port=5000, debug=False)

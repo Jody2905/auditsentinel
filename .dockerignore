@@ -1,0 +1,8 @@
+*.db
+logs/
+__pycache__/
+.pytest_cache/
+.git/
+.github/
+.vscode/
+tests/

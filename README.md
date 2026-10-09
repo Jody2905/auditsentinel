@@ -1,10 +1,13 @@
 # AuditSentinel
 
-**Database audit log anomaly detector.** AuditSentinel ingests database audit logs, validates and stores them in a relational database, and runs detection rules that flag suspicious activity such as brute-force logins, data exfiltration, privilege escalation and mass deletion. Every alert is linked to the exact log events that caused it.
+[![tests](https://github.com/Jody2905/auditsentinel/actions/workflows/tests.yml/badge.svg)](https://github.com/Jody2905/auditsentinel/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+
+**Database audit log anomaly detector.** AuditSentinel ingests database audit logs, validates and stores them in a relational database, and runs detection rules that flag suspicious activity such as brute-force logins, data exfiltration, privilege escalation and mass deletion. Every alert is linked to the exact log events that caused it, and a web dashboard lets an analyst investigate and triage them.
 
 The simulated environment is modelled on a government treasury system, with accounts payable, payroll and bank account data, which is the kind of system where database misuse does the most damage.
 
-> 🚧 **Status:** Phases 1 to 4 complete (schema, ingestion, detection, dashboard). Tests, Docker and PostgreSQL support are in progress.
+![AuditSentinel dashboard](docs/dashboard.png)
 
 ---
 
@@ -26,14 +29,16 @@ On the included sample data, AuditSentinel finds all five planted attack scenari
 ## How it works
 
 ```
-generate_logs.py  →  logs/audit_log.jsonl  →  ingest.py  →  SQLite database  →  detect.py  →  alerts
-   (simulate)            (raw log file)        (validate)      (audit_events)      (6 rules)    (+ evidence)
+generate_logs.py  →  logs/audit_log.jsonl  →  ingest.py  →  SQLite database  →  detect.py  →  app.py
+   (simulate)            (raw log file)        (validate)      (audit_events)      (6 rules)    (dashboard)
 ```
 
 1. **Generate:** `generate_logs.py` simulates a week of database activity for seven staff across Treasury, Accounts Payable, Payroll, IT and Internal Audit, with five attack scenarios hidden in the normal traffic.
 2. **Ingest:** `ingest.py` validates each log line (JSON structure, timestamp, IP address, action type, row count) before it reaches the database. Invalid lines are written to `logs/rejected.log` with the reason, so nothing is dropped silently.
 3. **Detect:** `detect.py` runs each rule, saves new alerts, and records which events triggered each one.
 4. **Investigate:** `app.py` serves a web dashboard to filter alerts, inspect their evidence, review a user's full activity timeline, and move alerts through open → investigating → closed.
+
+![Alert detail with evidence and triage](docs/alert-detail.png)
 
 ### Database schema
 
@@ -81,21 +86,38 @@ erDiagram
 
 ## Security and design decisions
 
-- **Parameterized queries everywhere.** Log content is treated as untrusted input. Values are always passed with `?` placeholders, never formatted into SQL, so a malicious username like `'; DROP TABLE users; --` is stored as plain text.
+- **Parameterized queries everywhere.** Log content is treated as untrusted input. Values are always passed with `?` placeholders, never formatted into SQL, so a malicious username like `'; DROP TABLE users; --` is stored as plain text. A test proves this.
 - **Validate before storing.** Malformed lines, invalid IPs (such as `999.1.1.1`), unknown actions and negative row counts are rejected at the boundary.
 - **No silent data loss.** Every rejected line is logged with its reason. In security monitoring, a dropped log line could be the evidence that matters.
 - **Integrity enforced by the database.** `CHECK` constraints restrict roles, event types, severities and statuses, so bad values are refused even if application code has a bug.
 - **Idempotent processing.** A `UNIQUE` index on the raw log line and evidence-based alert de-duplication mean ingestion and detection can be re-run safely without duplicates.
 - **Atomic ingestion.** Each batch is loaded in a single transaction: all of it is saved, or none of it.
 - **Traceable alerts.** The `alert_events` table links each alert to the original events, so an analyst can always trace a finding back to the source log lines.
-- **Hardened dashboard.** The web interface uses CSRF tokens on every state-changing form, whitelists all filter and status values, relies on Jinja's automatic HTML escaping to block XSS from log content, binds only to `127.0.0.1`, and keeps Flask debug mode off.
+- **Hardened dashboard.** CSRF tokens protect every state-changing form, filter and status values are whitelisted, Jinja's automatic escaping blocks XSS from log content, the server binds only to `127.0.0.1` by default, and Flask debug mode stays off.
+- **Least privilege in Docker.** The container runs the app as an unprivileged user, not root.
 - **Tunable thresholds.** Detection thresholds are constants at the top of `detect.py`. During testing, lowering the bulk-read threshold from 10,000 to 100 rows produced more than 140 false positives on normal activity, which shows why tuning matters.
+
+---
+
+## Testing
+
+37 automated tests cover validation, ingestion, every detection rule and the dashboard's security controls. Each test runs against its own temporary database. GitHub Actions runs the full suite on Python 3.11, 3.12 and 3.13 on every push.
+
+- **Every rule is tested both ways:** it must catch its attack, and stay quiet just below its threshold or on normal activity (for example, 9 failed logins raise nothing; 10 do).
+- **Security tests:** SQL injection in a log line, an HTML `<script>` payload in a username, missing or forged CSRF tokens, and unknown status values.
+
+The tests found a real bug during development. The original CSRF check compared the submitted token with the session token directly, so a visitor with **no session** could submit an **empty** token and `"" == ""` passed. The check now requires both tokens to be present, and a test guards against the bug returning.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
 
 ---
 
 ## Getting started
 
-**Requirements:** Python 3.10 or newer, and Flask for the dashboard. SQLite is built into Python.
+**Requirements:** Python 3.11 or newer. SQLite is built into Python; Flask is installed from `requirements.txt`.
 
 ```bash
 git clone https://github.com/Jody2905/auditsentinel.git
@@ -119,28 +141,16 @@ python ingest.py test_bad_lines.jsonl
 
 This loads 1 valid line and rejects 6 malformed ones; the reasons appear in `logs/rejected.log`.
 
-### Sample output
+### Run with Docker
 
+One command builds a fresh demo database and starts the dashboard:
+
+```bash
+docker build -t auditsentinel .
+docker run --rm -p 127.0.0.1:5000:5000 auditsentinel
 ```
-Detection complete: 6 new alert(s).
 
-Open alerts: 6
-----------------------------------------------------------------------
-#1   [CRITICAL] brute_force_login
-      25 failed logins for 'kbaptiste' from 185.220.101.47 within 5 minutes,
-      followed by a SUCCESSFUL login - account likely compromised.
-      Evidence: 26 event(s)
-
-#4   [CRITICAL] bulk_data_read
-      'rcharles' read 48,210 rows from 'payroll' (high sensitivity) at 2026-10-08T15:05:00.
-      Evidence: 1 event(s)
-
-#5   [CRITICAL] unauthorized_privilege_change
-      'sdaniel' (role: analyst) ran GRANT on 'vendor_payments' at 2026-10-08T16:22:00.
-      Only admins should change permissions.
-      Evidence: 1 event(s)
-...
-```
+Then open http://127.0.0.1:5000. The `127.0.0.1:` prefix keeps the dashboard reachable only from your own computer.
 
 ---
 
@@ -156,8 +166,12 @@ auditsentinel/
 ├── app.py                 # Flask dashboard
 ├── templates/             # dashboard pages (alerts, alert detail, user timeline)
 ├── static/style.css       # dashboard styling
-├── requirements.txt
-└── test_bad_lines.jsonl   # malformed lines for testing validation
+├── tests/                 # pytest suite (ingestion, detection, dashboard security)
+├── .github/workflows/     # GitHub Actions: runs the tests on every push
+├── Dockerfile
+├── requirements.txt       # runtime dependencies
+├── requirements-dev.txt   # adds pytest
+└── test_bad_lines.jsonl   # malformed lines for trying out validation
 ```
 
 ---
@@ -168,7 +182,13 @@ auditsentinel/
 - [x] Phase 2: Validated, idempotent ingestion
 - [x] Phase 3: Detection engine with six rules and linked evidence
 - [x] Phase 4: Flask dashboard to view, filter and triage alerts
-- [ ] Phase 5: Unit tests (pytest), Docker, and PostgreSQL support
+- [x] Phase 5: Test suite, GitHub Actions CI and Docker
+
+**Future ideas**
+- PostgreSQL support alongside SQLite
+- Per-user baselines, flagging activity that is unusual *for that person* rather than using fixed thresholds
+- Ingesting real SQL Server audit or PostgreSQL `pgaudit` logs
+- Analyst notes on alerts, and login for the dashboard itself
 
 ---
 
