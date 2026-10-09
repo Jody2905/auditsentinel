@@ -1,0 +1,12 @@
+# Generated files: anyone can recreate these by running the scripts
+*.db
+logs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db

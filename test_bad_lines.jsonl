@@ -1,0 +1,7 @@
+this is not json
+{"timestamp": "2026-10-09T09:00:00", "user": "mjames", "ip": "999.1.1.1", "action": "SELECT", "table": "payroll", "rows": 5}
+{"timestamp": "yesterday", "user": "mjames", "ip": "10.20.1.10", "action": "SELECT", "table": "payroll", "rows": 5}
+{"timestamp": "2026-10-09T09:00:00", "user": "mjames", "ip": "10.20.1.10", "action": "DROP", "table": "payroll"}
+{"timestamp": "2026-10-09T09:00:00", "user": "mjames", "ip": "10.20.1.10", "action": "UPDATE"}
+{"timestamp": "2026-10-09T09:00:00", "ip": "10.20.1.10", "action": "SELECT", "table": "x"}
+{"timestamp": "2026-10-09T09:05:00", "user": "mjames", "ip": "10.20.1.10", "action": "SELECT", "table": "departments", "rows": 3}
